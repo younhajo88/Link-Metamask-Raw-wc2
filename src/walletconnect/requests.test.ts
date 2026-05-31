@@ -176,6 +176,35 @@ describe('requestWalletAction', () => {
     });
   });
 
+  it('preserves a successful wallet result when its restored-state refresh fails', async () => {
+    vi.mocked(getSignClient).mockReturnValue({
+      request: vi.fn().mockResolvedValue('0xresult'),
+    } as never);
+    vi.mocked(refreshRestoredState).mockRejectedValue(
+      new Error('refresh failed'),
+    );
+    useDiagnosticsStore.getState().setActiveSession(session as never);
+
+    await expect(
+      requestWalletAction({
+        chain: getChain('mainnet'),
+        routeChain: getChain('mainnet'),
+        method: 'personal_sign',
+        params: [],
+        mode: 'safe',
+      }),
+    ).resolves.toBe('0xresult');
+
+    expect(refreshRestoredState).toHaveBeenCalledOnce();
+    expect(
+      useDiagnosticsStore.getState().events.map(({ type }) => type),
+    ).toEqual([
+      'personal_sign:pending',
+      'personal_sign:refresh_error',
+      'personal_sign:success',
+    ]);
+  });
+
   it('records the refreshed post-request snapshot after an error', async () => {
     const sessionAfter = { ...session, topic: 'topic-after-error' };
     vi.mocked(getSignClient).mockReturnValue({
@@ -247,5 +276,40 @@ describe('requestWalletAction', () => {
         'eip155:80002': ['0xabc'],
       },
     });
+  });
+
+  it('preserves add-chain success and its best session snapshot when the follow-up refresh fails', async () => {
+    const sessionAfter = { ...session, topic: 'topic-after-add-chain' };
+    vi.mocked(getSignClient).mockReturnValue({
+      request: vi.fn().mockResolvedValue('0xresult'),
+    } as never);
+    vi.mocked(refreshRestoredState)
+      .mockImplementationOnce(async () => {
+        useDiagnosticsStore.getState().setActiveSession(sessionAfter as never);
+      })
+      .mockRejectedValueOnce(new Error('follow-up refresh failed'));
+    useDiagnosticsStore.getState().setActiveSession(session as never);
+
+    await expect(
+      requestAddChain({
+        chain: getChain('polygonAmoy'),
+        mode: 'unsafe',
+        unsafeReason: 'exercise adding an unapproved target chain',
+      }),
+    ).resolves.toBe('0xresult');
+
+    expect(refreshRestoredState).toHaveBeenCalledTimes(2);
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      sessionBefore: session,
+      sessionAfter,
+    });
+    expect(
+      useDiagnosticsStore.getState().events.map(({ type }) => type),
+    ).toEqual([
+      'wallet_addEthereumChain:pending',
+      'wallet_addEthereumChain:success',
+      'wallet_addEthereumChain:refresh_error',
+      'wallet_addEthereumChain:session_snapshot',
+    ]);
   });
 });
