@@ -89,4 +89,3 @@ npm run build
 
 MetaMask permission screens run inside the mobile wallet, so the four profile
 experiments remain manual.
-

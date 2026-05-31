@@ -55,7 +55,13 @@ function appendSignClientEvent(
 
 function refreshAfterSessionEvent(topic?: string): void {
   refreshActiveSession(topic);
-  void refreshRestoredState();
+  refreshRestoredStateAfterSubscription();
+}
+
+function refreshRestoredStateAfterSubscription(): void {
+  void refreshRestoredState().catch((error: unknown) => {
+    appendSignClientEvent('refresh_error', { error: serializeError(error) });
+  });
 }
 
 function registerSubscriptions(client: SignClient): void {
@@ -75,7 +81,7 @@ function registerSubscriptions(client: SignClient): void {
       getStore().setUri(undefined);
       getStore().setStatus(disconnectPromise ? 'disconnecting' : 'disconnected');
     }
-    void refreshRestoredState();
+    refreshRestoredStateAfterSubscription();
   });
   client.on('session_expire', (event) => {
     appendSignClientEvent('session_expire', event);
@@ -85,7 +91,7 @@ function registerSubscriptions(client: SignClient): void {
       getStore().setUri(undefined);
       getStore().setStatus(disconnectPromise ? 'disconnecting' : 'expired');
     }
-    void refreshRestoredState();
+    refreshRestoredStateAfterSubscription();
   });
   client.on('session_extend', (event) => {
     appendSignClientEvent('session_extend', event);
@@ -97,6 +103,14 @@ function registerSubscriptions(client: SignClient): void {
   });
   client.on('proposal_expire', (event) => {
     appendSignClientEvent('proposal_expire', event);
+    getStore().setActiveProposal(undefined);
+    getStore().setUri(undefined);
+    if (
+      getStore().status === 'pairing_uri_ready' ||
+      getStore().status === 'approval_pending'
+    ) {
+      getStore().setStatus('expired');
+    }
   });
 }
 
@@ -188,13 +202,18 @@ async function connectWithProfileOnce(
     const { uri, approval } = await client.connect(proposal);
     getStore().setUri(uri);
     getStore().setStatus('pairing_uri_ready');
-    const session = await approval();
+    appendSignClientEvent('pairing_uri_ready', { uri });
+    const approvalPromise = approval();
+    getStore().setStatus('approval_pending');
+    const session = await approvalPromise;
     getStore().setActiveSession(session);
     getStore().setStatus('connected');
     appendSignClientEvent('session_approved', session);
     await refreshRestoredState();
     return session;
   } catch (error) {
+    getStore().setUri(undefined);
+    getStore().setActiveProposal(undefined);
     getStore().setLastError(
       error instanceof Error ? error.message : String(error),
     );

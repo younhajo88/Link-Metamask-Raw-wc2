@@ -38,6 +38,8 @@ export interface DiagnosticsState {
   sessions: SessionTypes.Struct[];
   pairings: PairingTypes.Struct[];
   events: DiagnosticEvent[];
+  sessionBefore?: SessionTypes.Struct;
+  sessionAfter?: SessionTypes.Struct;
   restoredFromStorage: boolean;
   lastError?: string;
   pendingRequestIds: string[];
@@ -55,6 +57,10 @@ export interface DiagnosticsState {
   addPendingRequest: (requestId: string) => void;
   removePendingRequest: (requestId: string) => void;
   appendEvent: (event: DiagnosticEventInput) => void;
+  setRequestSnapshots: (
+    sessionBefore?: SessionTypes.Struct,
+    sessionAfter?: SessionTypes.Struct,
+  ) => void;
   clearEvents: () => void;
   reset: () => void;
 }
@@ -70,6 +76,8 @@ const initialState = {
   sessions: [],
   pairings: [],
   events: [],
+  sessionBefore: undefined,
+  sessionAfter: undefined,
   restoredFromStorage: false,
   lastError: undefined,
   pendingRequestIds: [],
@@ -104,6 +112,8 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
     set((state) => ({
       events: [...state.events, createDiagnosticEvent(event)],
     })),
+  setRequestSnapshots: (sessionBefore, sessionAfter) =>
+    set({ sessionBefore, sessionAfter }),
   clearEvents: () => set({ events: [] }),
   reset: () => set(initialState),
 }));

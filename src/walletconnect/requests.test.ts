@@ -146,4 +146,63 @@ describe('requestWalletAction', () => {
     ).rejects.toThrow('stale topic');
     expect(refreshRestoredState).toHaveBeenCalledOnce();
   });
+
+  it('records the session baseline and post-request snapshot after success', async () => {
+    const sessionAfter = { ...session, topic: 'topic-after-success' };
+    vi.mocked(getSignClient).mockReturnValue({
+      request: vi.fn().mockImplementation(async () => {
+        useDiagnosticsStore.getState().setActiveSession(sessionAfter as never);
+        return '0xresult';
+      }),
+    } as never);
+    useDiagnosticsStore.getState().setActiveSession(session as never);
+
+    await requestWalletAction({
+      chain: getChain('mainnet'),
+      routeChain: getChain('mainnet'),
+      method: 'personal_sign',
+      params: ['secret message', '0x1111111111111111111111111111111111111111'],
+      mode: 'safe',
+    });
+
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      sessionBefore: session,
+      sessionAfter,
+    });
+    expect(useDiagnosticsStore.getState().events[1].payload).toMatchObject({
+      sessionBefore: session,
+      sessionAfter,
+    });
+  });
+
+  it('records the refreshed post-request snapshot after an error', async () => {
+    const sessionAfter = { ...session, topic: 'topic-after-error' };
+    vi.mocked(getSignClient).mockReturnValue({
+      request: vi.fn().mockRejectedValue(new Error('stale topic')),
+    } as never);
+    vi.mocked(refreshRestoredState).mockImplementation(async () => {
+      useDiagnosticsStore.getState().setActiveSession(sessionAfter as never);
+    });
+    useDiagnosticsStore.getState().setActiveSession(session as never);
+
+    await expect(
+      requestWalletAction({
+        chain: getChain('mainnet'),
+        routeChain: getChain('mainnet'),
+        method: 'personal_sign',
+        params: [],
+        mode: 'safe',
+      }),
+    ).rejects.toThrow('stale topic');
+
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      sessionBefore: session,
+      sessionAfter,
+    });
+    expect(useDiagnosticsStore.getState().events[1].payload).toMatchObject({
+      sessionBefore: session,
+      sessionAfter,
+      error: { message: 'stale topic' },
+    });
+  });
 });

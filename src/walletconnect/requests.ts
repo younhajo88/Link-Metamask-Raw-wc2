@@ -117,6 +117,7 @@ export async function requestWalletAction(
   }
 
   const requestId = crypto.randomUUID();
+  const sessionBefore = activeSession;
   const snapshot = {
     requestId,
     targetChain: action.chain.caip2,
@@ -133,8 +134,10 @@ export async function requestWalletAction(
         }
       : {}),
     session: parsedSession,
+    sessionBefore,
   };
 
+  store.setRequestSnapshots(sessionBefore);
   store.addPendingRequest(requestId);
   store.appendEvent({
     source: 'request',
@@ -151,25 +154,34 @@ export async function requestWalletAction(
         params: action.params,
       },
     });
+    const sessionAfter = getStore().activeSession;
+    getStore().setRequestSnapshots(sessionBefore, sessionAfter);
     getStore().appendEvent({
       source: 'request',
       type: `${action.method}:success`,
-      payload: { ...snapshot, result },
+      payload: { ...snapshot, sessionAfter, result },
     });
     return result;
   } catch (error) {
+    let refreshError: unknown;
+
+    await refreshRestoredState().catch((caughtRefreshError: unknown) => {
+      refreshError = caughtRefreshError;
+    });
+    const sessionAfter = getStore().activeSession;
+    getStore().setRequestSnapshots(sessionBefore, sessionAfter);
     getStore().appendEvent({
       source: 'request',
       type: `${action.method}:error`,
-      payload: { ...snapshot, error: serializeError(error) },
+      payload: { ...snapshot, sessionAfter, error: serializeError(error) },
     });
-    await refreshRestoredState().catch((refreshError: unknown) => {
+    if (refreshError !== undefined) {
       getStore().appendEvent({
         source: 'request',
         type: `${action.method}:refresh_error`,
-        payload: { ...snapshot, error: serializeError(refreshError) },
+        payload: { ...snapshot, sessionAfter, error: serializeError(refreshError) },
       });
-    });
+    }
     throw error;
   } finally {
     getStore().removePendingRequest(requestId);

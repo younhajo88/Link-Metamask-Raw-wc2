@@ -48,11 +48,44 @@ describe('buildExperimentExportJson', () => {
     );
 
     expect(result.exportedAt).toBe('2026-05-31T12:00:00.000Z');
-    expect(result.notes).toBe('Observed pairing URI: wc:abcdef...ijk@2');
-    expect(result.events[0].summary).toBe('Pair using wc:abcdef...ijk@2');
+    expect(result.notes).toBe('Observed pairing URI: wc:[REDACTED]@2');
+    expect(result.events[0].summary).toBe('Pair using wc:[REDACTED]@2');
     expect(result.events[0].payload).toEqual({
-      uri: 'wc:abcdef...ijk@2',
-      nested: { uri: 'wc:123456...890@2' },
+      uri: 'wc:[REDACTED]@2',
+      nested: { uri: 'wc:[REDACTED]@2' },
+    });
+  });
+
+  it('redacts session accounts, topics, and request params by default', () => {
+    const address = '0x1111111111111111111111111111111111111111';
+    const result = JSON.parse(
+      buildExperimentExportJson({
+        ...input,
+        sessionBefore: {
+          topic:
+            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          namespaces: { eip155: { accounts: [`eip155:1:${address}`] } },
+        },
+        events: [
+          {
+            ...input.events[0],
+            type: 'personal_sign:pending',
+            payload: {
+              method: 'personal_sign',
+              params: ['Sign this diagnostic secret', address],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(result.sessionBefore).toEqual({
+      topic: '[REDACTED]',
+      namespaces: { eip155: { accounts: '[REDACTED]' } },
+    });
+    expect(result.events[0].payload).toEqual({
+      method: 'personal_sign',
+      params: '[REDACTED]',
     });
   });
 

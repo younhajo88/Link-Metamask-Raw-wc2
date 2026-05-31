@@ -43,7 +43,12 @@ describe('PermissionMatrix', () => {
       },
       relay: { protocol: 'irn' },
       requiredNamespaces: {},
-      optionalNamespaces: {},
+      optionalNamespaces: {
+        eip155: {
+          methods: ['eth_sendTransaction'],
+          events: [],
+        },
+      },
       sessionProperties: {},
     });
 
@@ -57,6 +62,22 @@ describe('PermissionMatrix', () => {
       within(screen.getByRole('article', { name: 'Sepolia' })).getByText(
         'Can sign: No',
       ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('article', { name: 'Ethereum Mainnet' }))
+        .getByText(
+          (_, element) =>
+            element?.tagName === 'LI' &&
+            element.textContent === 'personal_sign: Yes',
+        ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('article', { name: 'Ethereum Mainnet' }))
+        .getByText(
+          (_, element) =>
+            element?.tagName === 'LI' &&
+            element.textContent === 'eth_sendTransaction: No',
+        ),
     ).toBeInTheDocument();
   });
 });

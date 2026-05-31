@@ -11,6 +11,7 @@ import {
   connectWithProfile,
   disconnectActiveSession,
 } from '../walletconnect/signClient';
+import { Panel } from './Panel';
 
 const CONNECT_DISABLED_STATUSES = new Set([
   'sign_client_initializing',
@@ -33,8 +34,7 @@ export function ConnectionPanel() {
   };
 
   return (
-    <section aria-labelledby="connection-panel-title">
-      <h2 id="connection-panel-title">Connection</h2>
+    <Panel title="Connection" defaultOpen>
       <div>
         <button
           type="button"
@@ -100,6 +100,6 @@ export function ConnectionPanel() {
           </button>
         </div>
       ) : null}
-    </section>
+    </Panel>
   );
 }

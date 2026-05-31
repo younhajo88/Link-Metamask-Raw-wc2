@@ -76,7 +76,7 @@ describe('connectWithProfile', () => {
     await expect(firstConnect).rejects.toThrow('cancel test approval');
   });
 
-  it('keeps the URI-ready status while waiting for approval', async () => {
+  it('keeps the URI while waiting for approval', async () => {
     const client = createClient();
     const approval = deferred<never>();
     client.connect.mockResolvedValue({
@@ -99,9 +99,106 @@ describe('connectWithProfile', () => {
       );
     });
 
-    expect(useDiagnosticsStore.getState().status).toBe('pairing_uri_ready');
+    expect(useDiagnosticsStore.getState().status).toBe('approval_pending');
     approval.reject(new Error('cancel test approval'));
     await expect(connect).rejects.toThrow('cancel test approval');
+  });
+
+  it('records the full pairing URI and moves to approval pending while awaiting the wallet', async () => {
+    const client = createClient();
+    const approval = deferred<never>();
+    const uri = 'wc:abcdefghijk@2?relay-protocol=irn&symKey=secret';
+    const observedStatuses: string[] = [];
+    client.connect.mockImplementation(async () => {
+      const { useDiagnosticsStore } = await import(
+        '../state/useDiagnosticsStore'
+      );
+      observedStatuses.push(useDiagnosticsStore.getState().status);
+      return {
+        uri,
+        approval: () => {
+          observedStatuses.push(useDiagnosticsStore.getState().status);
+          return approval.promise;
+        },
+      };
+    });
+    signClientMocks.init.mockResolvedValue(client);
+    const { connectWithProfile, initializeSignClient } = await import(
+      './signClient'
+    );
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    const connect = connectWithProfile('mainnet-only-required', 'mainnet');
+    await vi.waitFor(() => {
+      expect(useDiagnosticsStore.getState().status).toBe('approval_pending');
+    });
+
+    expect(observedStatuses).toEqual([
+      'approval_pending',
+      'pairing_uri_ready',
+    ]);
+    expect(
+      useDiagnosticsStore
+        .getState()
+        .events.find((event) => event.type === 'pairing_uri_ready'),
+    ).toMatchObject({
+      source: 'signClient',
+      payload: { uri },
+    });
+    approval.reject(new Error('cancel test approval'));
+    await expect(connect).rejects.toThrow('cancel test approval');
+  });
+
+  it('clears pairing state when wallet approval rejects', async () => {
+    const client = createClient();
+    client.connect.mockResolvedValue({
+      uri: 'wc:abcdefghijk@2?relay-protocol=irn',
+      approval: () => Promise.reject(new Error('wallet rejected')),
+    });
+    signClientMocks.init.mockResolvedValue(client);
+    const { connectWithProfile, initializeSignClient } = await import(
+      './signClient'
+    );
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    await expect(
+      connectWithProfile('mainnet-only-required', 'mainnet'),
+    ).rejects.toThrow('wallet rejected');
+
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      uri: undefined,
+      activeProposal: undefined,
+      status: 'error',
+    });
+  });
+
+  it('clears the active proposal when client.connect rejects', async () => {
+    const client = createClient();
+    client.connect.mockRejectedValue(new Error('connect rejected'));
+    signClientMocks.init.mockResolvedValue(client);
+    const { connectWithProfile, initializeSignClient } = await import(
+      './signClient'
+    );
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    await expect(
+      connectWithProfile('mainnet-only-required', 'mainnet'),
+    ).rejects.toThrow('connect rejected');
+
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      uri: undefined,
+      activeProposal: undefined,
+      status: 'error',
+    });
   });
 
   it('stores the active proposal snapshot when connecting', async () => {
@@ -320,6 +417,69 @@ describe('connectWithProfile', () => {
     expect(useDiagnosticsStore.getState()).toMatchObject({
       activeProposal: undefined,
       status,
+    });
+  });
+
+  it('clears pairing state after proposal_expire', async () => {
+    const client = createClient();
+    signClientMocks.init.mockResolvedValue(client);
+    const { initializeSignClient } = await import('./signClient');
+    const { buildNamespaceProposal } = await import('./namespaces');
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    useDiagnosticsStore
+      .getState()
+      .setActiveProposal(buildNamespaceProposal('mainnet-only-required', 'mainnet'));
+    useDiagnosticsStore
+      .getState()
+      .setUri('wc:abcdefghijk@2?relay-protocol=irn');
+    const handler = client.on.mock.calls.find(
+      ([name]) => name === 'proposal_expire',
+    )?.[1];
+
+    handler({ id: 123 });
+
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      uri: undefined,
+      activeProposal: undefined,
+    });
+  });
+
+  it('logs subscription refresh failures without an unhandled rejection', async () => {
+    const client = createClient();
+    signClientMocks.init.mockResolvedValue(client);
+    const { initializeSignClient } = await import('./signClient');
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    client.pairing.getAll.mockImplementation(() => {
+      throw new Error('subscription refresh failed');
+    });
+    const handler = client.on.mock.calls.find(
+      ([name]) => name === 'session_event',
+    )?.[1];
+
+    handler({ topic: 'observed-topic' });
+
+    await vi.waitFor(() => {
+      expect(
+        useDiagnosticsStore
+          .getState()
+          .events.find((event) => event.type === 'refresh_error'),
+      ).toMatchObject({
+        source: 'signClient',
+        payload: {
+          error: {
+            name: 'Error',
+            message: 'subscription refresh failed',
+          },
+        },
+      });
     });
   });
 

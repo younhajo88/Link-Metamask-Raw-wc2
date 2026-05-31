@@ -5,6 +5,7 @@ import {
   refreshRestoredState,
   selectRestoredSession,
 } from '../walletconnect/signClient';
+import { Panel } from './Panel';
 
 function formatExpiry(expiry: number): string {
   return new Date(expiry * 1_000).toLocaleString();
@@ -24,8 +25,7 @@ export function StoragePanel() {
   };
 
   return (
-    <section aria-labelledby="storage-panel-title">
-      <h2 id="storage-panel-title">Storage diagnostics</h2>
+    <Panel title="Storage diagnostics" defaultOpen>
       <p>Restored from storage: {restoredFromStorage ? 'Yes' : 'No'}</p>
       <div>
         <button
@@ -95,6 +95,6 @@ export function StoragePanel() {
       ) : (
         <p>No active pairings</p>
       )}
-    </section>
+    </Panel>
   );
 }

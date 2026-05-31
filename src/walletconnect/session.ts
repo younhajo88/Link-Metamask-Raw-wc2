@@ -12,6 +12,8 @@ interface SessionInput {
   pairingTopic?: string;
   expiry: number;
   namespaces?: Record<string, SessionNamespace | undefined>;
+  requiredNamespaces?: Record<string, SessionNamespace | undefined>;
+  optionalNamespaces?: Record<string, SessionNamespace | undefined>;
   peer?: {
     metadata?: {
       name?: string;
@@ -30,6 +32,7 @@ export interface ParsedSessionState {
   peerIcons: string[];
   approvedChains: string[];
   approvedAccounts: Record<string, string[]>;
+  proposedMethods?: string[];
   approvedMethods: string[];
   approvedEvents: string[];
   raw: unknown;
@@ -43,6 +46,7 @@ export interface ChainPermissionState {
   canSign: boolean;
   canSendTransaction: boolean;
   canSwitchSafely: boolean;
+  methodApprovals: Record<string, boolean>;
   notes: string[];
 }
 
@@ -61,6 +65,11 @@ export function extractChainFromAccount(account: string): string | undefined {
 
 export function parseSession(session: SessionInput): ParsedSessionState {
   const namespace = session.namespaces?.eip155;
+  const proposedMethods = uniqueStrings([
+    ...uniqueStrings(session.requiredNamespaces?.eip155?.methods),
+    ...uniqueStrings(session.optionalNamespaces?.eip155?.methods),
+    ...uniqueStrings(namespace?.methods),
+  ]);
   const approvedAccounts: Record<string, string[]> = {};
 
   for (const account of uniqueStrings(namespace?.accounts)) {
@@ -85,6 +94,7 @@ export function parseSession(session: SessionInput): ParsedSessionState {
     peerIcons: uniqueStrings(session.peer?.metadata?.icons),
     approvedChains: Object.keys(approvedAccounts),
     approvedAccounts,
+    proposedMethods,
     approvedMethods: uniqueStrings(namespace?.methods),
     approvedEvents: uniqueStrings(namespace?.events),
     raw: session,
@@ -119,6 +129,12 @@ export function buildPermissionMatrix(
   return CHAIN_LIST.map((chain) => {
     const accounts = session.approvedAccounts[chain.caip2] ?? [];
     const hasAccount = accounts.length > 0;
+    const methodApprovals = Object.fromEntries(
+      (session.proposedMethods ?? session.approvedMethods).map((method) => [
+        method,
+        session.approvedMethods.includes(method),
+      ]),
+    );
 
     return {
       chainKey: chain.key,
@@ -131,6 +147,7 @@ export function buildPermissionMatrix(
       canSwitchSafely:
         hasAccount &&
         session.approvedMethods.includes('wallet_switchEthereumChain'),
+      methodApprovals,
       notes: buildPermissionNotes(hasAccount, session.approvedMethods),
     };
   });

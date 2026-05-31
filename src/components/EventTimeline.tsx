@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 
 import { downloadExperimentExport } from '../diagnostics/exportResult';
-import type { DiagnosticEventSource } from '../diagnostics/eventLog';
+import {
+  sanitizeDiagnosticPayload,
+  type DiagnosticEventSource,
+} from '../diagnostics/eventLog';
 import { useDiagnosticsStore } from '../state/useDiagnosticsStore';
 import { CHAINS } from '../walletconnect/chains';
 import { buildPermissionMatrix } from '../walletconnect/session';
@@ -19,9 +22,10 @@ export function EventTimeline() {
     profileId,
     targetChainKey,
     activeProposal,
-    activeSession,
     parsedSession,
     sessions,
+    sessionBefore,
+    sessionAfter,
     events,
     clearEvents,
   } = useDiagnosticsStore();
@@ -56,8 +60,8 @@ export function EventTimeline() {
       targetChain: CHAINS[targetChainKey].caip2,
       proposal: activeProposal,
       sessions,
-      sessionBefore: sessions,
-      sessionAfter: activeSession,
+      sessionBefore,
+      sessionAfter,
       permissionMatrix,
       events,
       notes,
@@ -111,12 +115,14 @@ export function EventTimeline() {
             <p>
               <strong>{event.source}</strong> <code>{event.type}</code>
             </p>
-            <p>{event.summary}</p>
+            <p>{sanitizeDiagnosticPayload(event.summary) as string}</p>
             {event.payload !== undefined ? (
               <details>
                 <summary>View payload</summary>
                 <pre style={{ overflowX: 'auto' }}>
-                  <code>{JSON.stringify(event.payload, null, 2)}</code>
+                  <code>
+                    {JSON.stringify(sanitizeDiagnosticPayload(event.payload), null, 2)}
+                  </code>
                 </pre>
               </details>
             ) : null}

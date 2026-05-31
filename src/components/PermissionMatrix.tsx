@@ -1,6 +1,7 @@
 import { useDiagnosticsStore } from '../state/useDiagnosticsStore';
 import { getChain } from '../walletconnect/chains';
 import { buildPermissionMatrix } from '../walletconnect/session';
+import { Panel } from './Panel';
 
 const yesNo = (value: boolean) => (value ? 'Yes' : 'No');
 
@@ -9,16 +10,14 @@ export function PermissionMatrix() {
 
   if (!session) {
     return (
-      <section aria-labelledby="permission-matrix-title">
-        <h2 id="permission-matrix-title">Permission matrix</h2>
+      <Panel title="Permission matrix" defaultOpen>
         <p>No active session</p>
-      </section>
+      </Panel>
     );
   }
 
   return (
-    <section aria-labelledby="permission-matrix-title">
-      <h2 id="permission-matrix-title">Permission matrix</h2>
+    <Panel title="Permission matrix" defaultOpen>
       <div className="permission-grid">
         {buildPermissionMatrix(session).map((permission) => {
           const chain = getChain(permission.chainKey);
@@ -39,6 +38,16 @@ export function PermissionMatrix() {
                 Can send transaction: {yesNo(permission.canSendTransaction)}
               </p>
               <p>Can switch safely: {yesNo(permission.canSwitchSafely)}</p>
+              <h4>Proposed method approvals</h4>
+              <ul>
+                {Object.entries(permission.methodApprovals).map(
+                  ([method, approved]) => (
+                    <li key={method}>
+                      <code>{method}</code>: {yesNo(approved)}
+                    </li>
+                  ),
+                )}
+              </ul>
               <h4>Approved addresses</h4>
               {permission.accounts.length > 0 ? (
                 <ul>
@@ -65,6 +74,6 @@ export function PermissionMatrix() {
           );
         })}
       </div>
-    </section>
+    </Panel>
   );
 }

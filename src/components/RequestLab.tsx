@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent } from 'react';
+import { isAddress } from 'viem';
 
 import { useDiagnosticsStore } from '../state/useDiagnosticsStore';
 import { CHAIN_LIST, getChain, type ChainKey } from '../walletconnect/chains';
@@ -14,6 +15,7 @@ import {
   requestTypedDataSign,
   type RequestMode,
 } from '../walletconnect/requests';
+import { Panel } from './Panel';
 
 type RequestType =
   | 'personal_sign'
@@ -49,9 +51,14 @@ const REQUEST_OPTIONS: { value: RequestType; label: string }[] = [
   { value: 'wallet_getCapabilities', label: 'wallet_getCapabilities' },
 ];
 
+const AMOUNT_PATTERN = /^\d+(?:\.\d+)?$/;
+
 export function RequestLab() {
   const targetChainKey = useDiagnosticsStore((state) => state.targetChainKey);
   const setLastError = useDiagnosticsStore((state) => state.setLastError);
+  const hasPendingRequests = useDiagnosticsStore(
+    (state) => state.pendingRequestIds.length > 0,
+  );
   const [requestType, setRequestType] = useState<RequestType>('personal_sign');
   const [chainKey, setChainKey] = useState<ChainKey>(targetChainKey);
   const [message, setMessage] = useState('');
@@ -80,12 +87,35 @@ export function RequestLab() {
 
   const run = (request: () => Promise<unknown>) => {
     setValidationError(undefined);
-    void request().catch(reportError);
+    void Promise.resolve().then(request).catch(reportError);
+  };
+
+  const resetUnsafeConsent = () => {
+    setUnsafe(false);
+    setUnsafeReason('');
   };
 
   const validateUnsafeReason = () => {
     if (unsafe && !unsafeReason.trim()) {
       setValidationError('Unsafe requests require a non-empty reason.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateAddress = (value: string, label: string) => {
+    if (!isAddress(value)) {
+      setValidationError(`${label} must be a valid address.`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateAmount = () => {
+    if (!AMOUNT_PATTERN.test(amount)) {
+      setValidationError('Amount must be a non-negative decimal number.');
       return false;
     }
 
@@ -106,9 +136,11 @@ export function RequestLab() {
           setValidationError('Message is required.');
           return;
         }
+        resetUnsafeConsent();
         run(() => requestPersonalSign({ ...baseInput, message }));
         return;
       case 'eth_signTypedData_v4':
+        resetUnsafeConsent();
         run(() => requestTypedDataSign(baseInput));
         return;
       case 'eth_sendTransaction':
@@ -116,6 +148,13 @@ export function RequestLab() {
           setValidationError('Recipient and amount are required.');
           return;
         }
+        if (
+          !validateAddress(recipient, 'Recipient') ||
+          !validateAmount()
+        ) {
+          return;
+        }
+        resetUnsafeConsent();
         setConfirmation({
           chainKey,
           asset: chain.nativeCurrency.symbol,
@@ -130,11 +169,23 @@ export function RequestLab() {
           setValidationError('Token, recipient, and amount are required.');
           return;
         }
-        const parsedDecimals = Number(decimals);
-        if (!Number.isInteger(parsedDecimals) || parsedDecimals < 0) {
-          setValidationError('Decimals must be a non-negative integer.');
+        if (
+          !validateAddress(token, 'Token contract') ||
+          !validateAddress(recipient, 'Recipient') ||
+          !validateAmount()
+        ) {
           return;
         }
+        const parsedDecimals = Number(decimals);
+        if (
+          !Number.isInteger(parsedDecimals) ||
+          parsedDecimals < 0 ||
+          parsedDecimals > 255
+        ) {
+          setValidationError('Decimals must be an integer between 0 and 255.');
+          return;
+        }
+        resetUnsafeConsent();
         setConfirmation({
           chainKey,
           asset: `ERC-20 token ${token}`,
@@ -152,18 +203,23 @@ export function RequestLab() {
         return;
       }
       case 'wallet_switchEthereumChain':
+        resetUnsafeConsent();
         run(() => requestSwitchChain(baseInput));
         return;
       case 'wallet_addEthereumChain':
+        resetUnsafeConsent();
         run(() => requestAddChain(baseInput));
         return;
       case 'wallet_getPermissions':
+        resetUnsafeConsent();
         run(() => requestGetPermissions(baseInput));
         return;
       case 'wallet_requestPermissions':
+        resetUnsafeConsent();
         run(() => requestPermissions(baseInput));
         return;
       case 'wallet_getCapabilities':
+        resetUnsafeConsent();
         run(() => requestCapabilities(baseInput));
     }
   };
@@ -172,16 +228,17 @@ export function RequestLab() {
     setRequestType(event.target.value as RequestType);
     setValidationError(undefined);
     setConfirmation(undefined);
+    resetUnsafeConsent();
   };
 
   const handleChainChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setChainKey(event.target.value as ChainKey);
     setConfirmation(undefined);
+    resetUnsafeConsent();
   };
 
   return (
-    <section aria-labelledby="request-lab-title">
-      <h2 id="request-lab-title">Request lab</h2>
+    <Panel title="Request lab" defaultOpen>
       <label>
         Request
         <select value={requestType} onChange={handleRequestTypeChange}>
@@ -267,7 +324,7 @@ export function RequestLab() {
       ) : null}
 
       {validationError ? <p role="alert">{validationError}</p> : null}
-      <button type="button" onClick={prepareRequest}>
+      <button type="button" disabled={hasPendingRequests} onClick={prepareRequest}>
         Prepare request
       </button>
 
@@ -285,6 +342,7 @@ export function RequestLab() {
           ) : null}
           <button
             type="button"
+            disabled={hasPendingRequests}
             onClick={() => {
               const request = confirmation.send;
               setConfirmation(undefined);
@@ -298,6 +356,6 @@ export function RequestLab() {
           </button>
         </section>
       ) : null}
-    </section>
+    </Panel>
   );
 }

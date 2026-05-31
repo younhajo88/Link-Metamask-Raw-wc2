@@ -39,11 +39,39 @@ export function sanitizeDiagnosticPayload(value: unknown): unknown {
   return sanitizeValue(value, new WeakSet<object>());
 }
 
-function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
+const REDACTED = '[REDACTED]';
+const SENSITIVE_KEYS = new Set([
+  'account',
+  'accounts',
+  'address',
+  'data',
+  'from',
+  'message',
+  'pairingtopic',
+  'params',
+  'recipient',
+  'symkey',
+  'to',
+  'topic',
+]);
+
+function sanitizeString(value: string): string {
+  return value
+    .replace(/wc:[^@\s]+@(\d+)(?:\?[^\s]*)?/g, `wc:${REDACTED}@$1`)
+    .replace(/0x[a-fA-F0-9]{40}/g, REDACTED);
+}
+
+function sanitizeValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  key?: string,
+): unknown {
+  if (key && SENSITIVE_KEYS.has(key.toLowerCase())) {
+    return REDACTED;
+  }
+
   if (typeof value === 'string') {
-    return value.replace(/wc:[^@\s]+@\d+(?:\?[^\s]*)?/g, (uri) =>
-      shortenWalletConnectUri(uri),
-    );
+    return sanitizeString(value);
   }
 
   if (Array.isArray(value)) {
@@ -64,7 +92,7 @@ function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
     return Object.fromEntries(
       Object.entries(value).map(([key, nestedValue]) => [
         key,
-        sanitizeValue(nestedValue, seen),
+        sanitizeValue(nestedValue, seen, key),
       ]),
     );
   }
@@ -80,11 +108,11 @@ export function createDiagnosticEvent(
     at: new Date().toISOString(),
     source: input.source,
     type: input.type,
-    summary: sanitizeDiagnosticPayload(input.summary ?? input.type) as string,
+    summary: input.summary ?? input.type,
   };
 
   if (input.payload !== undefined) {
-    event.payload = sanitizeDiagnosticPayload(input.payload);
+    event.payload = input.payload;
   }
 
   return event;

@@ -87,6 +87,8 @@ describe('EventTimeline', () => {
         },
       },
     };
+    const sessionBefore = { ...session, topic: 'topic-before-request' };
+    const sessionAfter = { ...session, topic: 'topic-after-request' };
 
     useDiagnosticsStore.setState({
       profileId: 'single-target-required',
@@ -94,6 +96,8 @@ describe('EventTimeline', () => {
       activeProposal: proposal,
       sessions: [session] as never,
       activeSession: session as never,
+      sessionBefore: sessionBefore as never,
+      sessionAfter: sessionAfter as never,
       parsedSession: {
         topic: session.topic,
         expiry: session.expiry,
@@ -101,6 +105,7 @@ describe('EventTimeline', () => {
         peerIcons: [],
         approvedChains: ['eip155:1'],
         approvedAccounts: { 'eip155:1': ['0xabc'] },
+        proposedMethods: ['personal_sign'],
         approvedMethods: ['personal_sign'],
         approvedEvents: [],
         raw: session,
@@ -124,7 +129,8 @@ describe('EventTimeline', () => {
       wallet: 'MetaMask Mobile',
       proposal,
       sessions: [session],
-      sessionAfter: session,
+      sessionBefore,
+      sessionAfter,
       events,
       notes: 'Mobile approval differed from the proposal.',
     });
@@ -148,5 +154,39 @@ describe('EventTimeline', () => {
     fireEvent.click(button);
 
     expect(screen.getByText('No matching events')).toBeInTheDocument();
+  });
+
+  it('renders sanitized payloads while retaining raw event values in the store', () => {
+    const address = '0x1111111111111111111111111111111111111111';
+    useDiagnosticsStore.setState({
+      events: [
+        {
+          id: 'sensitive-event',
+          at: '2026-05-31T00:03:00.000Z',
+          source: 'request',
+          type: 'personal_sign:pending',
+          summary:
+            'Pair using wc:abcdefghijk@2?relay-protocol=irn&symKey=secret',
+          payload: {
+            topic: 'session-topic-secret',
+            method: 'personal_sign',
+            params: ['Sign this secret message', address],
+          },
+        },
+      ],
+    });
+
+    render(<EventTimeline />);
+    fireEvent.click(screen.getByText('View payload'));
+
+    expect(screen.getByText(/"topic": "\[REDACTED\]"/)).toBeInTheDocument();
+    expect(screen.getByText(/"params": "\[REDACTED\]"/)).toBeInTheDocument();
+    expect(screen.getByText('Pair using wc:[REDACTED]@2')).toBeInTheDocument();
+    expect(screen.queryByText(/Sign this secret message/)).not.toBeInTheDocument();
+    expect(useDiagnosticsStore.getState().events[0].payload).toEqual({
+      topic: 'session-topic-secret',
+      method: 'personal_sign',
+      params: ['Sign this secret message', address],
+    });
   });
 });

@@ -17,6 +17,11 @@ const session = {
       events: ['accountsChanged', 'chainChanged'],
     },
   },
+  optionalNamespaces: {
+    eip155: {
+      methods: ['eth_sendTransaction'],
+    },
+  },
   peer: {
     metadata: {
       name: 'MetaMask',
@@ -109,6 +114,11 @@ describe('buildPermissionMatrix', () => {
       canSign: true,
       canSendTransaction: false,
       canSwitchSafely: true,
+      methodApprovals: {
+        eth_sendTransaction: false,
+        personal_sign: true,
+        wallet_switchEthereumChain: true,
+      },
     });
     expect(matrix.find(({ chainKey }) => chainKey === 'sepolia')).toMatchObject({
       accounts: ['0xabc'],

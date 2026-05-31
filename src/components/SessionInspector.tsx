@@ -1,4 +1,5 @@
 import { useDiagnosticsStore } from '../state/useDiagnosticsStore';
+import { Panel } from './Panel';
 
 function formatExpiry(expiry: number): string {
   return new Date(expiry * 1_000).toLocaleString();
@@ -9,16 +10,14 @@ export function SessionInspector() {
 
   if (!session) {
     return (
-      <section aria-labelledby="session-inspector-title">
-        <h2 id="session-inspector-title">Session inspector</h2>
+      <Panel title="Session inspector" defaultOpen>
         <p>No active session</p>
-      </section>
+      </Panel>
     );
   }
 
   return (
-    <section aria-labelledby="session-inspector-title">
-      <h2 id="session-inspector-title">Session inspector</h2>
+    <Panel title="Session inspector" defaultOpen>
       <dl>
         <dt>Peer</dt>
         <dd>{session.peerName ?? 'Unknown peer'}</dd>
@@ -90,6 +89,6 @@ export function SessionInspector() {
       <pre style={{ overflowX: 'auto' }}>
         <code>{JSON.stringify(session.raw, null, 2)}</code>
       </pre>
-    </section>
+    </Panel>
   );
 }
