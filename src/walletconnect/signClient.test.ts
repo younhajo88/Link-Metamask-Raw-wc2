@@ -178,6 +178,29 @@ describe('connectWithProfile', () => {
     });
   });
 
+  it('clears the URI when wallet approval succeeds', async () => {
+    const client = createClient();
+    const session = { topic: 'approved-topic', expiry: 2_000_000_000 };
+    client.session.keys.push(session.topic);
+    client.session.get.mockReturnValue(session);
+    client.connect.mockResolvedValue({
+      uri: 'wc:abcdefghijk@2?relay-protocol=irn',
+      approval: () => Promise.resolve(session),
+    });
+    signClientMocks.init.mockResolvedValue(client);
+    const { connectWithProfile, initializeSignClient } = await import(
+      './signClient'
+    );
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    await connectWithProfile('mainnet-only-required', 'mainnet');
+
+    expect(useDiagnosticsStore.getState().uri).toBeUndefined();
+  });
+
   it('clears the active proposal when client.connect rejects', async () => {
     const client = createClient();
     client.connect.mockRejectedValue(new Error('connect rejected'));

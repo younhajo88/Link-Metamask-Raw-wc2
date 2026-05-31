@@ -150,11 +150,11 @@ describe('requestWalletAction', () => {
   it('records the session baseline and post-request snapshot after success', async () => {
     const sessionAfter = { ...session, topic: 'topic-after-success' };
     vi.mocked(getSignClient).mockReturnValue({
-      request: vi.fn().mockImplementation(async () => {
-        useDiagnosticsStore.getState().setActiveSession(sessionAfter as never);
-        return '0xresult';
-      }),
+      request: vi.fn().mockResolvedValue('0xresult'),
     } as never);
+    vi.mocked(refreshRestoredState).mockImplementation(async () => {
+      useDiagnosticsStore.getState().setActiveSession(sessionAfter as never);
+    });
     useDiagnosticsStore.getState().setActiveSession(session as never);
 
     await requestWalletAction({
@@ -165,6 +165,7 @@ describe('requestWalletAction', () => {
       mode: 'safe',
     });
 
+    expect(refreshRestoredState).toHaveBeenCalledOnce();
     expect(useDiagnosticsStore.getState()).toMatchObject({
       sessionBefore: session,
       sessionAfter,
@@ -203,6 +204,48 @@ describe('requestWalletAction', () => {
       sessionBefore: session,
       sessionAfter,
       error: { message: 'stale topic' },
+    });
+  });
+
+  it('exports the parsed add-chain session after its follow-up refresh', async () => {
+    const sessionAfter = {
+      ...session,
+      namespaces: {
+        eip155: {
+          ...session.namespaces.eip155,
+          accounts: [
+            ...session.namespaces.eip155.accounts,
+            'eip155:80002:0xabc',
+          ],
+        },
+      },
+    };
+    vi.mocked(getSignClient).mockReturnValue({
+      request: vi.fn().mockResolvedValue(null),
+    } as never);
+    vi.mocked(refreshRestoredState)
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => {
+        useDiagnosticsStore.getState().setActiveSession(sessionAfter as never);
+      });
+    useDiagnosticsStore.getState().setActiveSession(session as never);
+
+    await requestAddChain({
+      chain: getChain('polygonAmoy'),
+      mode: 'unsafe',
+      unsafeReason: 'exercise adding an unapproved target chain',
+    });
+
+    expect(
+      useDiagnosticsStore
+        .getState()
+        .events.find(
+          ({ type }) => type === 'wallet_addEthereumChain:session_snapshot',
+        )?.payload,
+    ).toMatchObject({
+      approvedAccounts: {
+        'eip155:80002': ['0xabc'],
+      },
     });
   });
 });

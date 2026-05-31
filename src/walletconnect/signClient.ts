@@ -207,6 +207,7 @@ async function connectWithProfileOnce(
     getStore().setStatus('approval_pending');
     const session = await approvalPromise;
     getStore().setActiveSession(session);
+    getStore().setUri(undefined);
     getStore().setStatus('connected');
     appendSignClientEvent('session_approved', session);
     await refreshRestoredState();

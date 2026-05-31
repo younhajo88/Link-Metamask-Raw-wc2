@@ -154,6 +154,7 @@ export async function requestWalletAction(
         params: action.params,
       },
     });
+    await refreshRestoredState();
     const sessionAfter = getStore().activeSession;
     getStore().setRequestSnapshots(sessionBefore, sessionAfter);
     getStore().appendEvent({
