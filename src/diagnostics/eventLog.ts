@@ -36,19 +36,35 @@ export function shortenWalletConnectUri(uri: string): string {
 }
 
 export function sanitizeDiagnosticPayload(value: unknown): unknown {
+  return sanitizeValue(value, new WeakSet<object>());
+}
+
+function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
   if (typeof value === 'string') {
-    return value.startsWith('wc:') ? shortenWalletConnectUri(value) : value;
+    return value.replace(/wc:[^@\s]+@\d+(?:\?[^\s]*)?/g, (uri) =>
+      shortenWalletConnectUri(uri),
+    );
   }
 
   if (Array.isArray(value)) {
-    return value.map(sanitizeDiagnosticPayload);
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+
+    seen.add(value);
+    return value.map((nestedValue) => sanitizeValue(nestedValue, seen));
   }
 
   if (value && typeof value === 'object') {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+
+    seen.add(value);
     return Object.fromEntries(
       Object.entries(value).map(([key, nestedValue]) => [
         key,
-        sanitizeDiagnosticPayload(nestedValue),
+        sanitizeValue(nestedValue, seen),
       ]),
     );
   }
@@ -64,7 +80,7 @@ export function createDiagnosticEvent(
     at: new Date().toISOString(),
     source: input.source,
     type: input.type,
-    summary: input.summary ?? input.type,
+    summary: sanitizeDiagnosticPayload(input.summary ?? input.type) as string,
   };
 
   if (input.payload !== undefined) {

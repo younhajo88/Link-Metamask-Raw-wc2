@@ -29,6 +29,26 @@ describe('sanitizeDiagnosticPayload', () => {
       nested: ['unchanged', { pairing: 'wc:123456...890@2' }],
     });
   });
+
+  it('sanitizes WalletConnect URI substrings embedded in text', () => {
+    expect(
+      sanitizeDiagnosticPayload(
+        'Pair using wc:abcdefghijk@2?relay-protocol=irn&symKey=secret now',
+      ),
+    ).toBe('Pair using wc:abcdef...ijk@2 now');
+  });
+
+  it('replaces cyclic references with a clear placeholder', () => {
+    const payload: { uri: string; self?: unknown } = {
+      uri: 'wc:abcdefghijk@2?relay-protocol=irn',
+    };
+    payload.self = payload;
+
+    expect(sanitizeDiagnosticPayload(payload)).toEqual({
+      uri: 'wc:abcdef...ijk@2',
+      self: '[Circular]',
+    });
+  });
 });
 
 describe('createDiagnosticEvent', () => {
@@ -61,5 +81,15 @@ describe('createDiagnosticEvent', () => {
         createDiagnosticEvent({ source, type: 'observed' }).source,
       ),
     ).toEqual(sources);
+  });
+
+  it('sanitizes WalletConnect URI substrings embedded in summaries', () => {
+    const event = createDiagnosticEvent({
+      source: 'ui',
+      type: 'pairing_uri_ready',
+      summary: 'Pair using wc:abcdefghijk@2?relay-protocol=irn&symKey=secret',
+    });
+
+    expect(event.summary).toBe('Pair using wc:abcdef...ijk@2');
   });
 });

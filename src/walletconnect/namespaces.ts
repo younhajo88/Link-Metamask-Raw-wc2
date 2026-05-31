@@ -56,8 +56,8 @@ export function buildNamespaceProposal(
   }[profileId];
   const buildNamespace = (chains: string[]): Namespace => ({
     chains,
-    methods: DEFAULT_METHODS,
-    events: DEFAULT_EVENTS,
+    methods: [...DEFAULT_METHODS],
+    events: [...DEFAULT_EVENTS],
   });
 
   return {

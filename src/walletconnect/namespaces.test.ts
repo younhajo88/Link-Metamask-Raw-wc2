@@ -74,4 +74,17 @@ describe('buildNamespaceProposal', () => {
       },
     );
   });
+
+  it('isolates proposal methods and events from defaults and other proposals', () => {
+    const first = buildNamespaceProposal('mainnet-only-required', 'mainnet');
+    first.requiredNamespaces.eip155.methods.push('mutated_method');
+    first.requiredNamespaces.eip155.events.push('mutated_event');
+
+    const second = buildNamespaceProposal('mainnet-only-required', 'mainnet');
+
+    expect(DEFAULT_METHODS).not.toContain('mutated_method');
+    expect(DEFAULT_EVENTS).not.toContain('mutated_event');
+    expect(second.requiredNamespaces.eip155.methods).toEqual(DEFAULT_METHODS);
+    expect(second.requiredNamespaces.eip155.events).toEqual(DEFAULT_EVENTS);
+  });
 });

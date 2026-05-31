@@ -60,21 +60,19 @@ export function extractChainFromAccount(account: string): string | undefined {
 }
 
 export function parseSession(session: SessionInput): ParsedSessionState {
-  const namespaces = Object.values(session.namespaces ?? {});
+  const namespace = session.namespaces?.eip155;
   const approvedAccounts: Record<string, string[]> = {};
 
-  for (const namespace of namespaces) {
-    for (const account of uniqueStrings(namespace?.accounts)) {
-      const chain = extractChainFromAccount(account);
-      if (!chain) {
-        continue;
-      }
+  for (const account of uniqueStrings(namespace?.accounts)) {
+    const chain = extractChainFromAccount(account);
+    if (!chain) {
+      continue;
+    }
 
-      const address = account.slice(chain.length + 1);
-      approvedAccounts[chain] ??= [];
-      if (!approvedAccounts[chain].includes(address)) {
-        approvedAccounts[chain].push(address);
-      }
+    const address = account.slice(chain.length + 1);
+    approvedAccounts[chain] ??= [];
+    if (!approvedAccounts[chain].includes(address)) {
+      approvedAccounts[chain].push(address);
     }
   }
 
@@ -87,12 +85,8 @@ export function parseSession(session: SessionInput): ParsedSessionState {
     peerIcons: uniqueStrings(session.peer?.metadata?.icons),
     approvedChains: Object.keys(approvedAccounts),
     approvedAccounts,
-    approvedMethods: [
-      ...new Set(namespaces.flatMap((namespace) => uniqueStrings(namespace?.methods))),
-    ],
-    approvedEvents: [
-      ...new Set(namespaces.flatMap((namespace) => uniqueStrings(namespace?.events))),
-    ],
+    approvedMethods: uniqueStrings(namespace?.methods),
+    approvedEvents: uniqueStrings(namespace?.events),
     raw: session,
   };
 }

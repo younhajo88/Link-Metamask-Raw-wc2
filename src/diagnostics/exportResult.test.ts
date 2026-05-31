@@ -28,13 +28,28 @@ const input = {
 
 describe('buildExperimentExportJson', () => {
   it('excludes full pairing URIs by default', () => {
+    const uri = 'wc:abcdefghijk@2?relay-protocol=irn&symKey=secret';
     const result = JSON.parse(
-      buildExperimentExportJson(input, {
-        exportedAt: '2026-05-31T12:00:00.000Z',
-      }),
+      buildExperimentExportJson(
+        {
+          ...input,
+          notes: `Observed pairing URI: ${uri}`,
+          events: [
+            {
+              ...input.events[0],
+              summary: `Pair using ${uri}`,
+            },
+          ],
+        },
+        {
+          exportedAt: '2026-05-31T12:00:00.000Z',
+        },
+      ),
     );
 
     expect(result.exportedAt).toBe('2026-05-31T12:00:00.000Z');
+    expect(result.notes).toBe('Observed pairing URI: wc:abcdef...ijk@2');
+    expect(result.events[0].summary).toBe('Pair using wc:abcdef...ijk@2');
     expect(result.events[0].payload).toEqual({
       uri: 'wc:abcdef...ijk@2',
       nested: { uri: 'wc:123456...890@2' },

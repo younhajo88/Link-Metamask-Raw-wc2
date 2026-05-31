@@ -71,6 +71,31 @@ describe('parseSession', () => {
     });
     expect(parsed.raw).toBeDefined();
   });
+
+  it('derives EVM permissions only from the eip155 namespace', () => {
+    const parsed = parseSession({
+      ...session,
+      namespaces: {
+        eip155: {
+          accounts: ['eip155:1:0xabc'],
+          methods: ['personal_sign'],
+          events: ['accountsChanged'],
+        },
+        unrelated: {
+          accounts: ['eip155:80002:0xattacker'],
+          methods: ['eth_sendTransaction', 'wallet_switchEthereumChain'],
+          events: ['chainChanged'],
+        },
+      },
+    });
+
+    expect(parsed.approvedAccounts).toEqual({ 'eip155:1': ['0xabc'] });
+    expect(parsed.approvedMethods).toEqual(['personal_sign']);
+    expect(parsed.approvedEvents).toEqual(['accountsChanged']);
+    expect(() =>
+      assertCanRequest(parsed, getChain('mainnet'), 'eth_sendTransaction'),
+    ).toThrow('Method not approved: eth_sendTransaction');
+  });
 });
 
 describe('buildPermissionMatrix', () => {
