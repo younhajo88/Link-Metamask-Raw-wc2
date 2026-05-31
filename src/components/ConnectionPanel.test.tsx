@@ -27,4 +27,16 @@ describe('ConnectionPanel', () => {
       screen.getByTitle('WalletConnect pairing QR code'),
     ).toBeInTheDocument();
   });
+
+  it('disables connect and disconnect while disconnecting', () => {
+    useDiagnosticsStore.setState({
+      activeSession: { topic: 'active-topic' } as never,
+      status: 'disconnecting',
+    });
+
+    render(<ConnectionPanel />);
+
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeDisabled();
+  });
 });

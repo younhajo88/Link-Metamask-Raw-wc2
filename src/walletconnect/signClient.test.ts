@@ -183,6 +183,164 @@ describe('connectWithProfile', () => {
     expect(useDiagnosticsStore.getState().status).toBe('connected');
   });
 
+  it('shares an in-flight disconnect instead of starting a duplicate operation', async () => {
+    const client = createClient();
+    const disconnect = deferred<void>();
+    client.disconnect.mockReturnValue(disconnect.promise);
+    signClientMocks.init.mockResolvedValue(client);
+    const { disconnectActiveSession, initializeSignClient } = await import(
+      './signClient'
+    );
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    useDiagnosticsStore
+      .getState()
+      .setActiveSession({ topic: 'active-topic', expiry: 2_000_000_000 } as never);
+    const { buildNamespaceProposal } = await import('./namespaces');
+    useDiagnosticsStore
+      .getState()
+      .setActiveProposal(buildNamespaceProposal('mainnet-only-required', 'mainnet'));
+
+    const firstDisconnect = disconnectActiveSession();
+    const duplicateDisconnect = disconnectActiveSession();
+
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+    disconnect.resolve();
+    await Promise.all([firstDisconnect, duplicateDisconnect]);
+    expect(useDiagnosticsStore.getState().activeProposal).toBeUndefined();
+  });
+
+  it('rejects connect while a disconnect is in progress', async () => {
+    const client = createClient();
+    const disconnect = deferred<void>();
+    client.disconnect.mockReturnValue(disconnect.promise);
+    signClientMocks.init.mockResolvedValue(client);
+    const {
+      connectWithProfile,
+      disconnectActiveSession,
+      initializeSignClient,
+    } = await import('./signClient');
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    useDiagnosticsStore
+      .getState()
+      .setActiveSession({ topic: 'active-topic', expiry: 2_000_000_000 } as never);
+    const disconnecting = disconnectActiveSession();
+
+    await expect(
+      connectWithProfile('mainnet-only-required', 'mainnet'),
+    ).rejects.toThrow('WalletConnect disconnect is already in progress');
+    expect(client.connect).not.toHaveBeenCalled();
+    disconnect.resolve();
+    await disconnecting;
+  });
+
+  it('stays disconnecting until an in-flight disconnect settles after session_delete', async () => {
+    const client = createClient();
+    const disconnect = deferred<void>();
+    client.disconnect.mockReturnValue(disconnect.promise);
+    signClientMocks.init.mockResolvedValue(client);
+    const { disconnectActiveSession, initializeSignClient } = await import(
+      './signClient'
+    );
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    useDiagnosticsStore
+      .getState()
+      .setActiveSession({ topic: 'active-topic', expiry: 2_000_000_000 } as never);
+    const handler = client.on.mock.calls.find(
+      ([name]) => name === 'session_delete',
+    )?.[1];
+    const disconnecting = disconnectActiveSession();
+
+    handler({ topic: 'active-topic' });
+
+    expect(useDiagnosticsStore.getState().status).toBe('disconnecting');
+    disconnect.resolve();
+    await disconnecting;
+    expect(useDiagnosticsStore.getState().status).toBe('disconnected');
+  });
+
+  it('clears the active proposal when selecting a restored session', async () => {
+    const client = createClient();
+    const restoredSession = { topic: 'restored-topic', expiry: 2_000_000_000 };
+    client.session.keys.push(restoredSession.topic);
+    client.session.get.mockReturnValue(restoredSession);
+    signClientMocks.init.mockResolvedValue(client);
+    const { initializeSignClient, selectRestoredSession } = await import(
+      './signClient'
+    );
+    const { buildNamespaceProposal } = await import('./namespaces');
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    useDiagnosticsStore
+      .getState()
+      .setActiveProposal(buildNamespaceProposal('mainnet-only-required', 'mainnet'));
+
+    selectRestoredSession(restoredSession.topic);
+
+    expect(useDiagnosticsStore.getState().activeProposal).toBeUndefined();
+  });
+
+  it.each([
+    ['session_delete', 'disconnected'],
+    ['session_expire', 'expired'],
+  ])('clears the active proposal after %s', async (eventName, status) => {
+    const client = createClient();
+    signClientMocks.init.mockResolvedValue(client);
+    const { initializeSignClient } = await import('./signClient');
+    const { buildNamespaceProposal } = await import('./namespaces');
+    const { useDiagnosticsStore } = await import(
+      '../state/useDiagnosticsStore'
+    );
+
+    await initializeSignClient();
+    useDiagnosticsStore
+      .getState()
+      .setActiveSession({ topic: 'active-topic', expiry: 2_000_000_000 } as never);
+    useDiagnosticsStore
+      .getState()
+      .setActiveProposal(buildNamespaceProposal('mainnet-only-required', 'mainnet'));
+    const handler = client.on.mock.calls.find(([name]) => name === eventName)?.[1];
+
+    handler({ topic: 'active-topic' });
+
+    expect(useDiagnosticsStore.getState()).toMatchObject({
+      activeProposal: undefined,
+      status,
+    });
+  });
+
+  it('retries initialization after restored state refresh fails', async () => {
+    const failedClient = createClient();
+    failedClient.session.getAll.mockImplementation(() => {
+      throw new Error('transient storage failure');
+    });
+    const recoveredClient = createClient();
+    signClientMocks.init
+      .mockResolvedValueOnce(failedClient)
+      .mockResolvedValueOnce(recoveredClient);
+    const { initializeSignClient } = await import('./signClient');
+
+    await expect(initializeSignClient()).rejects.toThrow(
+      'transient storage failure',
+    );
+    await expect(initializeSignClient()).resolves.toBe(recoveredClient);
+    expect(signClientMocks.init).toHaveBeenCalledTimes(2);
+  });
+
   it('downgrades a stale active session after a failed ping refresh', async () => {
     const client = createClient();
     client.ping.mockRejectedValue(new Error('stale topic'));
@@ -201,10 +359,15 @@ describe('connectWithProfile', () => {
         topic: 'stale-topic',
         expiry: 2_000_000_000,
       } as never);
+    const { buildNamespaceProposal } = await import('./namespaces');
+    useDiagnosticsStore
+      .getState()
+      .setActiveProposal(buildNamespaceProposal('mainnet-only-required', 'mainnet'));
     useDiagnosticsStore.getState().setStatus('connected');
 
     await expect(pingActiveSession()).rejects.toThrow('stale topic');
     expect(useDiagnosticsStore.getState().activeSession).toBeUndefined();
+    expect(useDiagnosticsStore.getState().activeProposal).toBeUndefined();
     expect(useDiagnosticsStore.getState().status).toBe('disconnected');
   });
 });

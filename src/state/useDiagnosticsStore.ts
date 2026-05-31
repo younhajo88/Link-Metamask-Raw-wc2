@@ -55,6 +55,7 @@ export interface DiagnosticsState {
   addPendingRequest: (requestId: string) => void;
   removePendingRequest: (requestId: string) => void;
   appendEvent: (event: DiagnosticEventInput) => void;
+  clearEvents: () => void;
   reset: () => void;
 }
 
@@ -103,5 +104,6 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
     set((state) => ({
       events: [...state.events, createDiagnosticEvent(event)],
     })),
+  clearEvents: () => set({ events: [] }),
   reset: () => set(initialState),
 }));

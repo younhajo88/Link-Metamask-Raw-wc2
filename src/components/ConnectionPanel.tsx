@@ -17,6 +17,7 @@ const CONNECT_DISABLED_STATUSES = new Set([
   'pairing_uri_ready',
   'approval_pending',
   'connected',
+  'disconnecting',
 ]);
 
 export function ConnectionPanel() {
@@ -46,7 +47,7 @@ export function ConnectionPanel() {
         </button>
         <button
           type="button"
-          disabled={!activeSession}
+          disabled={!activeSession || status === 'disconnecting'}
           onClick={() => {
             void disconnectActiveSession().catch(reportError);
           }}

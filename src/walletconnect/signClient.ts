@@ -12,6 +12,7 @@ import {
 let signClient: SignClient | undefined;
 let signClientPromise: Promise<SignClient> | undefined;
 let connectPromise: Promise<SessionTypes.Struct> | undefined;
+let disconnectPromise: Promise<void> | undefined;
 
 const getStore = () => useDiagnosticsStore.getState();
 
@@ -38,6 +39,7 @@ function refreshActiveSession(topic?: string): void {
   const refreshedSession = getSession(activeSession.topic);
   getStore().setActiveSession(refreshedSession);
   if (!refreshedSession) {
+    getStore().setActiveProposal(undefined);
     getStore().setUri(undefined);
     getStore().setStatus('disconnected');
   }
@@ -69,8 +71,9 @@ function registerSubscriptions(client: SignClient): void {
     appendSignClientEvent('session_delete', event);
     if (getStore().activeSession?.topic === event.topic) {
       getStore().setActiveSession(undefined);
+      getStore().setActiveProposal(undefined);
       getStore().setUri(undefined);
-      getStore().setStatus('disconnected');
+      getStore().setStatus(disconnectPromise ? 'disconnecting' : 'disconnected');
     }
     void refreshRestoredState();
   });
@@ -78,8 +81,9 @@ function registerSubscriptions(client: SignClient): void {
     appendSignClientEvent('session_expire', event);
     if (getStore().activeSession?.topic === event.topic) {
       getStore().setActiveSession(undefined);
+      getStore().setActiveProposal(undefined);
       getStore().setUri(undefined);
-      getStore().setStatus('expired');
+      getStore().setStatus(disconnectPromise ? 'disconnecting' : 'expired');
     }
     void refreshRestoredState();
   });
@@ -132,6 +136,7 @@ export async function initializeSignClient(): Promise<SignClient> {
       return client;
     })
     .catch((error: unknown) => {
+      signClient = undefined;
       signClientPromise = undefined;
       getStore().setLastError(
         error instanceof Error ? error.message : String(error),
@@ -203,6 +208,9 @@ export async function connectWithProfile(
   profileId: NamespaceProfileId,
   targetChainKey: ChainKey,
 ): Promise<SessionTypes.Struct> {
+  if (disconnectPromise || getStore().status === 'disconnecting') {
+    throw new Error('WalletConnect disconnect is already in progress');
+  }
   if (connectPromise) {
     throw new Error('WalletConnect connection is already in progress');
   }
@@ -219,7 +227,7 @@ export async function connectWithProfile(
   }
 }
 
-export async function disconnectActiveSession(): Promise<void> {
+async function disconnectActiveSessionOnce(): Promise<void> {
   const session = getStore().activeSession;
   if (!session) {
     return;
@@ -231,8 +239,10 @@ export async function disconnectActiveSession(): Promise<void> {
       topic: session.topic,
       reason: getSdkError('USER_DISCONNECTED'),
     });
-    if (getStore().activeSession?.topic === session.topic) {
+    const activeSession = getStore().activeSession;
+    if (!activeSession || activeSession.topic === session.topic) {
       getStore().setActiveSession(undefined);
+      getStore().setActiveProposal(undefined);
       getStore().setUri(undefined);
       getStore().setStatus('disconnected');
     }
@@ -243,6 +253,23 @@ export async function disconnectActiveSession(): Promise<void> {
     throw error;
   } finally {
     await refreshRestoredState();
+  }
+}
+
+export async function disconnectActiveSession(): Promise<void> {
+  if (disconnectPromise) {
+    return disconnectPromise;
+  }
+
+  const pendingDisconnect = disconnectActiveSessionOnce();
+  disconnectPromise = pendingDisconnect;
+
+  try {
+    await pendingDisconnect;
+  } finally {
+    if (disconnectPromise === pendingDisconnect) {
+      disconnectPromise = undefined;
+    }
   }
 }
 
@@ -262,6 +289,7 @@ export function selectRestoredSession(topic: string): SessionTypes.Struct {
   }
 
   getStore().setActiveSession(session);
+  getStore().setActiveProposal(undefined);
   getStore().setStatus('connected');
   return session;
 }
