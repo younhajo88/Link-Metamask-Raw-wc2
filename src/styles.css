@@ -58,6 +58,24 @@ pre {
   clip: rect(0, 0, 0, 0);
 }
 
+.app-footer {
+  color: #60727c;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 24px;
+  padding: 14px 0 0;
+}
+
+.app-footer span {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #d5e0e5;
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
 @media (min-width: 720px) {
   .permission-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

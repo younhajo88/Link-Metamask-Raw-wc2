@@ -9,6 +9,7 @@ import { SessionInspector } from './components/SessionInspector';
 import { StatusHeader } from './components/StatusHeader';
 import { StoragePanel } from './components/StoragePanel';
 import { useDiagnosticsStore } from './state/useDiagnosticsStore';
+import { appVersion } from './version';
 import { initializeSignClient } from './walletconnect/signClient';
 
 export function App() {
@@ -62,6 +63,11 @@ export function App() {
       <RequestLab />
       <EventTimeline />
       <StoragePanel />
+      <footer className="app-footer">
+        <span>Version {appVersion.version}</span>
+        <span>Commit {appVersion.commit}</span>
+        <span>Built {new Date(appVersion.buildTime).toLocaleString()}</span>
+      </footer>
     </main>
   );
 }
